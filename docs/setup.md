@@ -4,6 +4,8 @@ Copy `.env.example` to `.env`, then fill only the integrations you intend to run
 
 ## Local prerequisites
 
+If an existing PostgreSQL installation occupies port 5432, set `POSTGRES_PORT=55432` in `.env` and change the host port in `DATABASE_URL` to `55432`. Run `docker compose up -d --wait postgres`, then `pnpm db:migrate`. The Compose database still listens on 5432 inside Docker. Restart the API and worker after changing the connection string. An authentication error (`28P01`) means the selected server rejected the credentials; changing `.env` does not reset an existing database user's password.
+
 Verify `node --version`, `pnpm --version`, `docker info`, `python --version`, and `uv --version`. Docker must be running Linux containers. On the build machine, Docker Desktop failed while initializing its inference socket; this is a host problem, not a Compose health failure. Resolve Docker Desktop startup before running the full local stack. Do not factory-reset existing Docker data just to run this project.
 
 If Node package downloads fail with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on a machine using a trusted enterprise certificate, enable Node's system trust store for the command: PowerShell `$env:NODE_OPTIONS='--use-system-ca'`. For uv use `uv --native-tls sync`. These preserve certificate verification; never use `strict-ssl=false` or disable TLS validation.

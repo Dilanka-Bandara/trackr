@@ -2,6 +2,8 @@
 
 Verified on 2026-10-08. This records executed checks, not a claim of a live deployment.
 
+Follow-up local setup: Docker subsequently became available. A dedicated pgvector PostgreSQL container now runs on host port 55432 to avoid the existing native PostgreSQL installations. The actual database migration and demo seed completed successfully. The earlier Docker-startup blocker below describes the initial build session; full-stack integration validation remains separate from this database check.
+
 | Check                                                          | Result                                                            |
 | -------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `pnpm lint`                                                    | Passed                                                            |
