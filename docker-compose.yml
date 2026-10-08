@@ -1,0 +1,121 @@
+name: trackr
+services:
+  # Durable relational data and vector embeddings.
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ['127.0.0.1:5432:5432']
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      retries: 20
+  # Queue persistence avoids losing accepted background work on restart.
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    ports: ['127.0.0.1:6379:6379']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      retries: 20
+  # Local S3-compatible object storage, with a private uploads bucket.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${WEB_URL}
+    ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      retries: 20
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint:
+      [
+        '/bin/sh',
+        '-c',
+        'mc alias set local http://minio:9000 "$${S3_ACCESS_KEY}" "$${S3_SECRET_KEY}" && mc mb --ignore-existing "local/$${S3_BUCKET}"',
+      ]
+  # Dev email capture; no mail leaves your machine.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+  ai:
+    profiles: [apps]
+    build: { context: services/ai, target: development }
+    env_file: .env
+    ports: ['127.0.0.1:8000:8000']
+    volumes: ['./services/ai/app:/app/app']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      retries: 10
+  migrate:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: development }
+    env_file: .env
+    environment: &app-env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      AI_URL: http://ai:8000
+      SMTP_HOST: mailpit
+    command: pnpm db:migrate
+    depends_on:
+      postgres: { condition: service_healthy }
+  api:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: development }
+    env_file: .env
+    environment: *app-env
+    ports: ['127.0.0.1:4000:4000']
+    command: pnpm --filter @trackr/api dev:api
+    volumes: ['./apps/api/src:/app/apps/api/src']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  worker:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: development }
+    env_file: .env
+    environment: *app-env
+    command: pnpm --filter @trackr/api dev:worker
+    volumes: ['./apps/api/src:/app/apps/api/src']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      ai: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  web:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/web/Dockerfile, target: development }
+    environment: { NEXT_PUBLIC_API_URL: '${NEXT_PUBLIC_API_URL}' }
+    ports: ['127.0.0.1:3000:3000']
+    volumes: ['./apps/web/src:/app/apps/web/src']
+    depends_on: [api]
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

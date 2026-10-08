@@ -1,0 +1,90 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          { POSTGRES_USER: trackr, POSTGRES_PASSWORD: trackr-test-only, POSTGRES_DB: trackr_test }
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U trackr -d trackr_test" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://trackr:trackr-test-only@localhost:5432/trackr_test
+      DATABASE_URL: postgresql://trackr:trackr-test-only@localhost:5432/trackr_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: cp .env.example .env
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
+      - uses: astral-sh/setup-uv@v6
+        with: { version: '0.9.5' }
+      - run: uv sync --project services/ai --frozen
+      - run: cd services/ai && uv run pytest && uv run ruff check app tests
+      - run: pnpm --filter @trackr/web exec playwright install --with-deps chromium
+      - name: Start live test dependencies and application processes
+        run: |
+          docker compose up -d minio minio-init mailpit
+          pnpm db:migrate
+          pnpm --filter @trackr/api start > /tmp/trackr-api.log 2>&1 &
+          pnpm --filter @trackr/api worker > /tmp/trackr-worker.log 2>&1 &
+          (cd services/ai && TRACKR_TEST_AI=1 uv run uvicorn tests.fake_server:app --host 127.0.0.1 --port 8000) > /tmp/trackr-ai.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/api/health; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:4000/api/health
+      - run: E2E_LIVE=1 pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-results, path: apps/web/test-results, retention-days: 7 }
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform -chdir=infra/terraform init -backend=false && terraform -chdir=infra/terraform validate && terraform -chdir=infra/terraform test
+  images:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    strategy:
+      matrix:
+        include:
+          - { service: api, context: '.', file: apps/api/Dockerfile }
+          - { service: web, context: '.', file: apps/web/Dockerfile }
+          - { service: ai, context: services/ai, file: services/ai/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          {
+            registry: ghcr.io,
+            username: '${{ github.actor }}',
+            password: '${{ secrets.GITHUB_TOKEN }}',
+          }
+      - id: names
+        run: echo "repository=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: '${{ matrix.context }}'
+          file: '${{ matrix.file }}'
+          target: production
+          push: "${{ github.event_name == 'push' }}"
+          tags: |
+            ghcr.io/${{ steps.names.outputs.repository }}-${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ steps.names.outputs.repository }}-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

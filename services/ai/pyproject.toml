@@ -1,0 +1,16 @@
+[project]
+name = "trackr-ai"
+version = "0.1.0"
+description = "Internal AI service for Trackr"
+requires-python = ">=3.12,<3.13"
+dependencies = ["fastapi[standard]", "pydantic-settings", "openai", "boto3", "sentry-sdk[fastapi]", "opentelemetry-distro", "opentelemetry-exporter-otlp", "opentelemetry-instrumentation-fastapi"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "httpx", "ruff"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110

@@ -1,0 +1,11 @@
+{
+  "name": "@trackr/config",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint.config.mjs",
+    "./tsconfig": "./tsconfig.json",
+    "./prettier": "./prettier.json"
+  }
+}

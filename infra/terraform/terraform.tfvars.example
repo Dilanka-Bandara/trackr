@@ -1,0 +1,13 @@
+name            = "trackr"
+region          = "us-east-1"
+domain          = "trackr.example.com"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-me"
+images = {
+  web    = "ghcr.io/your-user/trackr-web:COMMIT_SHA"
+  api    = "ghcr.io/your-user/trackr-api:COMMIT_SHA"
+  worker = "ghcr.io/your-user/trackr-api:COMMIT_SHA"
+  ai     = "ghcr.io/your-user/trackr-ai:COMMIT_SHA"
+}
+service_count = 0
+# Supply provider secrets through a protected secret .tfvars file or TF_VAR_app_secrets.
+# app_secrets = { OPENAI_API_KEY = "...", RESEND_API_KEY = "...", EMAIL_FROM = "Trackr <hello@yourdomain.com>" }

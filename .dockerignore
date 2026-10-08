@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.venv
+.git
+.env
+.env.*.local
+**/.turbo
+**/__pycache__
+**/.pytest_cache
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+infra/terraform/.terraform
+infra/terraform/*.tfstate*

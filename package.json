@@ -1,0 +1,28 @@
+{
+  "name": "trackr",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "pnpm --filter @trackr/web test:e2e",
+    "db:generate": "pnpm --filter @trackr/api db:generate",
+    "db:migrate": "pnpm --filter @trackr/api db:migrate",
+    "db:seed": "pnpm --filter @trackr/api db:seed",
+    "format": "prettier --write .",
+    "postinstall": "pnpm --filter @trackr/shared build"
+  },
+  "devDependencies": {
+    "turbo": "latest",
+    "prettier": "latest",
+    "typescript": "npm:@typescript/typescript6@latest",
+    "eslint": "latest",
+    "typescript-eslint": "latest",
+    "@eslint/js": "latest",
+    "vitest": "latest",
+    "@typescript/native": "npm:typescript@latest"
+  }
+}

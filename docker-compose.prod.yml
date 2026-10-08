@@ -1,0 +1,110 @@
+name: trackr-production
+x-runtime: &runtime
+  restart: unless-stopped
+  env_file: .env
+  security_opt: ['no-new-privileges:true']
+  logging:
+    driver: json-file
+    options: { max-size: '10m', max-file: '3' }
+x-app-env: &app-env
+  NODE_ENV: production
+  TRUST_PROXY_HOPS: 1
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379
+  AI_URL: http://ai:8000
+services:
+  postgres:
+    <<: *runtime
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      retries: 20
+    mem_limit: 1g
+  redis:
+    <<: *runtime
+    image: redis:8-alpine
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      retries: 20
+    mem_limit: 256m
+  migrate:
+    image: ${REGISTRY}-api:${IMAGE_TAG}
+    env_file: .env
+    environment: *app-env
+    command: ['node', 'dist/db/migrate.js']
+    depends_on:
+      postgres: { condition: service_healthy }
+  ai:
+    <<: *runtime
+    image: ${REGISTRY}-ai:${IMAGE_TAG}
+    mem_limit: 768m
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 15s
+      retries: 10
+  api:
+    <<: *runtime
+    image: ${REGISTRY}-api:${IMAGE_TAG}
+    environment: *app-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    mem_limit: 768m
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      retries: 10
+  worker:
+    <<: *runtime
+    image: ${REGISTRY}-api:${IMAGE_TAG}
+    command: ['node', 'dist/worker.js']
+    environment: *app-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      ai: { condition: service_healthy }
+    mem_limit: 1g
+  web:
+    <<: *runtime
+    image: ${REGISTRY}-web:${IMAGE_TAG}
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 768m
+  caddy:
+    <<: *runtime
+    image: caddy:2-alpine
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      [
+        './infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro',
+        'caddy-data:/data',
+        'caddy-config:/config',
+      ]
+    depends_on: [web, api]
+    mem_limit: 128m
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

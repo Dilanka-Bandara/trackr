@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  '@scarf/scarf': false
+  '@nestjs/core': true
+  argon2: true
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: true
+  sharp: true
