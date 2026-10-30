@@ -9,7 +9,13 @@ import { ArrowRight, Check, LoaderCircle, Sparkles } from 'lucide-react';
 import { api, API_URL, json } from '@/lib/api';
 import { Logo } from './app-shell';
 import { Button } from './ui/button';
-export function AuthForm({ register = false }: { register?: boolean }) {
+export function AuthForm({
+  register = false,
+  passwordChanged = false,
+}: {
+  register?: boolean;
+  passwordChanged?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState('');
   const [demoPending, setDemoPending] = useState(false);
@@ -77,6 +83,9 @@ export function AuthForm({ register = false }: { register?: boolean }) {
             <Sparkles size={22} />
           </span>
           <h2>{register ? 'A fresh start starts here.' : 'Welcome back.'}</h2>
+          {passwordChanged && (
+            <p role="status">Password changed. Sign in with your new password.</p>
+          )}
           <p>
             {register
               ? 'Create your account and make your next move.'

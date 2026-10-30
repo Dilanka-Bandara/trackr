@@ -28,6 +28,10 @@ Refresh tokens cannot be replayed after rotation. Access JWTs expire after 15 mi
 
 Google uses an authorization-code exchange with a short-lived random state cookie and a verified email claim. An existing password account with the same email is not silently linked.
 
+## Account settings
+
+Account settings permit name updates through a strict shared schema; email, role, and plan cannot be modified through this endpoint. Password changes require the current password, reject Google-only accounts, and atomically update the password hash and revoke all refresh tokens. Session creation and refresh lock the user row to coordinate with password changes; concurrent changes use a password-hash comparison to reject stale credentials. The current browser's authentication cookies are cleared. Existing access JWTs on other devices remain valid for up to 15 minutes. Password recovery and email verification are separate, unimplemented features.
+
 ## CV upload and processing
 
 ```mermaid
@@ -51,6 +55,8 @@ sequenceDiagram
 Create-only uploads prevent replacing a verified object through a reused URL. A private user-prefixed key and upload ticket prevent cross-account confirmation. There is no OCR or malware scanning in this portfolio implementation. Put lifecycle cleanup and malware scanning in front of production processing if needed. PDF parsing is isolated in the worker container with memory limits.
 
 ## Board transactions and quotas
+
+The AI service also supports a local Ollama adapter using its chat and embedding HTTP APIs. Ollama requests use an operator-configured base URL, bounded HTTP timeouts, strict response validation, and no automatic cloud fallback. JSON responses pass the same application schemas as other providers. Streaming requires a completion marker; interrupted streams fail. Embeddings reject implicit truncation and are checked for dimensions and finite values before storage. Changing the embedding model requires re-embedding existing data or an isolated database; matching vector dimensions alone does not establish model compatibility.
 
 Moving a card locks the current user's database row, reads that user's board, inserts the card at its destination, and reindexes affected columns within one transaction. The frontend makes an optimistic change and restores the previous cache if the request fails. Status selection in the drawer provides a keyboard/touch alternative to dragging.
 

@@ -69,7 +69,7 @@ test('register, save a job, change stage, and revisit dashboard', async ({ page 
   await expect(page.getByText('Ready to use', { exact: true })).toBeVisible({ timeout: 45000 });
   await page.getByRole('link', { name: 'Application board', exact: true }).click();
   await page.getByRole('button', { name: 'Software Engineer', exact: true }).click();
-  await page.getByLabel('Your CV', { exact: true }).selectOption({ label: 'resume.pdf' });
+  await page.getByLabel(/^Your CV/).selectOption({ label: 'resume.pdf' });
   await page.getByRole('button', { name: 'AI match', exact: true }).click();
   await page.getByRole('button', { name: 'Analyze my match' }).click();
   await expect(page.getByText('Your strengths', { exact: true })).toBeVisible({ timeout: 30000 });

@@ -146,6 +146,101 @@ describe('API with a real PostgreSQL engine (PGlite locally, PostgreSQL in CI)',
       .send({ company: 'A', title: 'B' })
       .expect(403);
   });
+  it('updates only the authenticated profile and rejects privilege fields', async () => {
+    await request(app.getHttpServer()).patch('/api/auth/profile').expect(403);
+    const before = (await bob.get('/api/auth/me')).body;
+    for (const input of [
+      { name: ' ' },
+      { name: 'Alice', role: 'ADMIN' },
+      { name: 'Alice', id: before.id },
+    ]) {
+      await alice
+        .patch('/api/auth/profile')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', csrfA)
+        .send(input)
+        .expect(400);
+    }
+    const updated = await alice
+      .patch('/api/auth/profile')
+      .set('Origin', 'http://localhost:3000')
+      .set('X-CSRF-Token', csrfA)
+      .send({ name: '  Alice Updated  ' })
+      .expect(200);
+    expect(updated.body.name).toBe('Alice Updated');
+    expect(updated.body.passwordHash).toBeUndefined();
+    expect((await bob.get('/api/auth/me')).body).toEqual(before);
+  });
+  it('requires the current password and revokes every existing refresh session', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const csrf = (await agent.get('/api/auth/csrf')).body.token;
+    const email = `password-${Date.now()}@example.com`;
+    const created = await agent
+      .post('/api/auth/register')
+      .set('Origin', 'http://localhost:3000')
+      .set('X-CSRF-Token', csrf)
+      .send({ name: 'Password Test', email, password: 'Before123!' })
+      .expect(201);
+    const other = request.agent(app.getHttpServer());
+    const otherCsrf = (await other.get('/api/auth/csrf')).body.token;
+    await other
+      .post('/api/auth/login')
+      .set('Origin', 'http://localhost:3000')
+      .set('X-CSRF-Token', otherCsrf)
+      .send({ email, password: 'Before123!' })
+      .expect(201);
+    try {
+      for (const input of [
+        { currentPassword: 'Wrong123!', newPassword: 'After123!' },
+        { currentPassword: 'Before123!', newPassword: 'short' },
+        { currentPassword: 'Before123!', newPassword: 'Before123!' },
+      ]) {
+        await agent
+          .post('/api/auth/password')
+          .set('Origin', 'http://localhost:3000')
+          .set('X-CSRF-Token', csrf)
+          .send(input)
+          .expect(400);
+      }
+      await agent
+        .post('/api/auth/password')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', csrf)
+        .send({ currentPassword: 'Before123!', newPassword: 'After123!' })
+        .expect(201);
+      await agent.get('/api/auth/me').expect(401);
+      await other
+        .post('/api/auth/refresh')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', otherCsrf)
+        .expect(401);
+      await agent
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', csrf)
+        .send({ email, password: 'Before123!' })
+        .expect(401);
+      await agent
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', csrf)
+        .send({ email, password: 'After123!' })
+        .expect(201);
+      await db
+        .update(schema.users)
+        .set({ passwordHash: null })
+        .where(eq(schema.users.id, created.body.id));
+      const googleOnly = await agent
+        .post('/api/auth/password')
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', csrf)
+        .send({ currentPassword: 'After123!', newPassword: 'Another123!' })
+        .expect(400);
+      expect(googleOnly.body.message).toContain('Google');
+    } finally {
+      await db.delete(schema.users).where(eq(schema.users.id, created.body.id));
+    }
+  });
   it('validates jobs, scopes CRUD and supports search', async () => {
     await alice
       .post('/api/jobs')
@@ -341,21 +436,19 @@ describe('API with a real PostgreSQL engine (PGlite locally, PostgreSQL in CI)',
   });
   it('verifies webhook signatures and deduplicates subscription events', async () => {
     const stripe = new Stripe('sk_test_local_only');
-    const subscriptionList = vi
-      .spyOn(stripe.subscriptions, 'list')
-      .mockResolvedValue({
-        object: 'list',
-        has_more: false,
-        url: '',
-        data: [
-          {
-            id: 'sub_local',
-            created: 1,
-            status: 'active',
-            items: { data: [{ current_period_end: 1900000000 }] },
-          },
-        ],
-      } as unknown as Awaited<ReturnType<Stripe['subscriptions']['list']>>);
+    const subscriptionList = vi.spyOn(stripe.subscriptions, 'list').mockResolvedValue({
+      object: 'list',
+      has_more: false,
+      url: '',
+      data: [
+        {
+          id: 'sub_local',
+          created: 1,
+          status: 'active',
+          items: { data: [{ current_period_end: 1900000000 }] },
+        },
+      ],
+    } as unknown as Awaited<ReturnType<Stripe['subscriptions']['list']>>);
     const client = vi.spyOn(BillingService.prototype, 'client').mockReturnValue(stripe);
     const originalSecret = env.STRIPE_WEBHOOK_SECRET;
     env.STRIPE_WEBHOOK_SECRET = 'whsec_local_test_only';

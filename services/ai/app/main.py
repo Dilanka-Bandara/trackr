@@ -7,7 +7,7 @@ from typing import Annotated
 
 import sentry_sdk
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -24,6 +24,7 @@ from .models import (
     ResumeInput,
     ResumeOutput,
 )
+from .ollama import LocalProviderError, OllamaProvider
 from .providers import BedrockProvider, LLMProvider, OpenAIProvider
 from .settings import get_settings
 
@@ -58,6 +59,8 @@ def authorize(x_internal_key: Annotated[str, Header()] = ""):
 def get_provider() -> LLMProvider:
     settings = get_settings()
     try:
+        if settings.llm_provider == "ollama":
+            return OllamaProvider(settings)
         return OpenAIProvider(settings) if settings.llm_provider == "openai" else BedrockProvider(settings)
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
@@ -67,6 +70,11 @@ app = FastAPI(title="Trackr internal AI", lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
 Provider = Annotated[LLMProvider, Depends(get_provider)]
 auth = [Depends(authorize)]
+
+
+@app.exception_handler(LocalProviderError)
+async def local_provider_error(_request, exc: LocalProviderError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 async def structured[T: BaseModel](provider: LLMProvider, prompt: str, data: BaseModel, output: type[T]) -> T:
@@ -116,7 +124,24 @@ async def questions(body: JobInput, provider: Provider):
 
 @app.post("/cover-letter/stream", dependencies=auth)
 async def cover_letter(body: JobInput, provider: Provider):
+    # Discover connection/model failures before sending successful stream headers.
+    iterator = provider.stream((PROMPTS / "cover-letter.txt").read_text(), body.model_dump_json())
+    try:
+        first = await anext(iterator)
+    except StopAsyncIteration:
+        raise HTTPException(502, "The AI provider returned an empty cover letter") from None
+
+    async def chunks():
+        try:
+            yield first
+            async for chunk in iterator:
+                yield chunk
+        finally:
+            close = getattr(iterator, "aclose", None)
+            if close:
+                await close()
+
     return StreamingResponse(
-        provider.stream((PROMPTS / "cover-letter.txt").read_text(), body.model_dump_json()),
+        chunks(),
         media_type="text/plain",
     )

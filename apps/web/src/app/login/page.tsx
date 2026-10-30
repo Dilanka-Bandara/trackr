@@ -1,4 +1,8 @@
 import { AuthForm } from '@/components/auth-form';
-export default function Login() {
-  return <AuthForm />;
+export default async function Login({
+  searchParams,
+}: {
+  searchParams: Promise<{ passwordChanged?: string }>;
+}) {
+  return <AuthForm passwordChanged={(await searchParams).passwordChanged === '1'} />;
 }

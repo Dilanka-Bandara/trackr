@@ -24,7 +24,9 @@ uv run uvicorn app.main:app --reload --port 8000
 
 Open [Trackr](http://localhost:3000). The demo account is **demo@trackr.dev / Demo1234!** after seeding. Its six opportunities are explicitly illustrative examples, not actual job listings. To seed an administrator, set `SEED_ADMIN_PASSWORD` to a password of at least 12 characters and run `pnpm db:seed` again. No administrator password is hard-coded.
 
-AI generation needs `OPENAI_API_KEY` or configured Bedrock credentials. Google OAuth, Stripe, Resend, Sentry, and OpenTelemetry are optional integrations, activated through `.env`. AI actions never return fabricated successful results when a provider is unavailable. Mailpit captures development emails locally.
+If the MinIO container downloads are unavailable, use the [local source-build workaround and Windows startup instructions](docs/LOCAL_AI.md#this-windows-computer). On this development computer, PostgreSQL uses port 55432 and Redis is already a local service.
+
+AI generation can use local Ollama models without a provider API key, or configured OpenAI/Bedrock credentials. See [local AI setup](docs/LOCAL_AI.md). Google OAuth, Stripe, Resend, Sentry, and OpenTelemetry are optional integrations, activated through `.env`. AI actions never return fabricated successful results when a provider is unavailable. Mailpit captures development emails locally.
 
 ### Entire stack in containers
 
@@ -48,10 +50,11 @@ The default Compose command starts only infrastructure so you can develop the ap
 ## What is implemented
 
 - Email registration/login, Argon2 hashes, Passport JWT cookies, rotating hashed refresh tokens, logout, Google OAuth with state checking and verified email.
+- Account settings with name editing and current-password-verified password changes that revoke refresh sessions.
 - A responsive light/dark workspace: dashboard, saved-job search/sort/pagination, job forms, drag-and-drop board, notes, stage selection, and CV selection.
 - Ownership checks on jobs, applications, CVs, reminders, notifications, and AI results; role-protected admin endpoints and UI.
 - Signed, create-only PDF uploads, 5 MB limit, file-signature verification, private S3-compatible storage, background extraction, structured CV parsing, and embeddings.
-- Provider interface for OpenAI and AWS Bedrock; validated outputs with one retry; pgvector-assisted match analysis; streamed cover letters; interview questions.
+- Provider interface for OpenAI, AWS Bedrock, and local Ollama; validated outputs with one retry; pgvector-assisted match analysis; streamed cover letters; interview questions.
 - Durable pending AI records, transactional quota reservation, retrying background jobs, live Socket.IO notifications, and SSE streaming.
 - Welcome/reminder/weekly-summary React Email templates; local SMTP and production Resend. Weekly summaries run Mondays at 08:00 UTC.
 - Stripe Checkout/Portal, verified raw-body webhooks, idempotent event handling, latest-state subscription reconciliation, and 10/200 monthly AI quotas.
@@ -109,6 +112,7 @@ Python: `cd services/ai && uv run pytest && uv run ruff check app tests`.
 - [Architecture and security decisions](docs/architecture.md)
 - [Provider setup and troubleshooting](docs/setup.md)
 - [VPS deployment and rollback](docs/deploy.md)
+- [Free portfolio hosting guide](docs/FREE_HOSTING.md)
 - [AWS Terraform setup](infra/terraform/README.md)
 - [Learning journal template](docs/LEARNING.md) — intentionally left for the human author.
 

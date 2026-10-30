@@ -12,6 +12,8 @@ If Node package downloads fail with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on a machi
 
 ## OpenAI or Bedrock
 
+For local inference without a provider API key, choose `LLM_PROVIDER=ollama` and follow [Local AI setup](LOCAL_AI.md). Both a chat model and a compatible embedding model are required. The provider setting defaults to OpenAI until changed explicitly.
+
 Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY`. `OPENAI_MODEL` and `OPENAI_EMBEDDING_MODEL` are configurable. The default embedding uses 1024 dimensions and must match the migration. For Bedrock, set `LLM_PROVIDER=bedrock`, region and model IDs, and configure an IAM role or the normal AWS credential chain with model access. Titan V2 embeddings support the default dimension.
 
 Restart the AI service after changing its environment. The API and worker need the same `AI_INTERNAL_KEY` as FastAPI. Parsing and AI failures appear in the CV list, saved result, and notification feed. Scanned image-only PDFs need OCR before upload; this implementation extracts embedded PDF text and does not include OCR.

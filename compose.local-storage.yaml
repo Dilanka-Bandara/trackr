@@ -1,0 +1,10 @@
+# Use with docker-compose.yml, starting postgres, minio and mailpit explicitly.
+# Initialize the private bucket with node infra/scripts/init-local-storage.cjs.
+services:
+  minio:
+    image: trackr-minio:local
+    build:
+      context: ./infra/local
+      dockerfile: Minio.Dockerfile
+  mailpit:
+    image: axllent/mailpit:v1.27

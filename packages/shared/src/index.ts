@@ -8,6 +8,17 @@ export const registerSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const loginSchema = registerSchema.pick({ email: true, password: true });
+export const profileSchema = registerSchema.pick({ name: true }).strict();
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: registerSchema.shape.password,
+  })
+  .strict()
+  .refine((input) => input.currentPassword !== input.newPassword, {
+    message: 'Choose a password different from your current password',
+    path: ['newPassword'],
+  });
 export const jobSchema = z.object({
   company: z.string().trim().min(1).max(120),
   title: z.string().trim().min(1).max(160),

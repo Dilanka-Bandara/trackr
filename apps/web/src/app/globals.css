@@ -3298,3 +3298,43 @@ th:last-child {
   padding-top: 15px;
   padding-bottom: 15px;
 }
+/* Account settings forms remain stacked on narrow screens. */
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.account-card {
+  padding: 28px;
+}
+.account-card h2 {
+  margin-bottom: 8px;
+}
+.account-card p {
+  margin-bottom: 20px;
+}
+.account-card form {
+  display: grid;
+  gap: 12px;
+}
+.account-card input {
+  width: 100%;
+  min-width: 0;
+}
+.account-card small {
+  line-height: 1.6;
+  opacity: 0.75;
+}
+.account-card button {
+  justify-self: start;
+  margin-top: 8px;
+}
+@media (max-width: 760px) {
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-card {
+    padding: 20px;
+  }
+}

@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { hash, verify } from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
-import { z, registerSchema, User } from '@trackr/shared';
+import { z, registerSchema, changePasswordSchema, User } from '@trackr/shared';
 import { DbService } from '../../db/db.service';
 import { refreshTokens, users } from '../../db/schema';
 import { QueueService } from '../queue/queue.module';
@@ -45,20 +45,65 @@ export class AuthService {
       throw new UnauthorizedException('Email or password is incorrect');
     return this.session(user);
   }
+  async updateProfile(userId: string, name: string) {
+    const [user] = await this.database.db
+      .update(users)
+      .set({ name })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!user) throw new UnauthorizedException();
+    return safeUser(user);
+  }
+  async changePassword(userId: string, input: z.infer<typeof changePasswordSchema>) {
+    const user = await this.database.db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!user?.passwordHash)
+      throw new BadRequestException(
+        'This account uses Google sign-in. Manage your password through Google.',
+      );
+    if (!(await verify(user.passwordHash, input.currentPassword)))
+      throw new BadRequestException('Current password is incorrect');
+    const passwordHash = await hash(input.newPassword);
+    await this.database.db.transaction(async (tx) => {
+      const [changed] = await tx
+        .update(users)
+        .set({ passwordHash })
+        .where(and(eq(users.id, userId), eq(users.passwordHash, user.passwordHash!)))
+        .returning({ id: users.id });
+      if (!changed) throw new ConflictException('Your password changed. Sign in again and retry.');
+      await tx
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(eq(refreshTokens.userId, userId));
+    });
+    return { ok: true };
+  }
   async session(user: typeof users.$inferSelect) {
     const refresh = randomBytes(48).toString('hex');
-    await this.database.db
-      .insert(refreshTokens)
-      .values({
+    await this.database.db.transaction(async (tx) => {
+      const [current] = await tx.select().from(users).where(eq(users.id, user.id)).for('update');
+      if (!current || current.passwordHash !== user.passwordHash)
+        throw new UnauthorizedException('Please sign in again');
+      await tx.insert(refreshTokens).values({
         userId: user.id,
         tokenHash: tokenHash(refresh),
         expiresAt: new Date(Date.now() + 7 * 86400000),
       });
+    });
     return { user: safeUser(user), access: this.jwt.sign({ sub: user.id }), refresh };
   }
   async refresh(token?: string) {
     if (!token) throw new UnauthorizedException();
     return this.database.db.transaction(async (tx) => {
+      const candidate = await tx.query.refreshTokens.findFirst({
+        where: eq(refreshTokens.tokenHash, tokenHash(token)),
+      });
+      if (!candidate) throw new UnauthorizedException();
+      // Match the password-change lock order so rotation cannot escape revocation.
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, candidate.userId))
+        .for('update');
       // Atomic revocation makes a refresh token single-use even under concurrent requests.
       const [old] = await tx
         .update(refreshTokens)
@@ -75,13 +120,11 @@ export class AuthService {
       const user = await tx.query.users.findFirst({ where: eq(users.id, old.userId) });
       if (!user) throw new UnauthorizedException();
       const refresh = randomBytes(48).toString('hex');
-      await tx
-        .insert(refreshTokens)
-        .values({
-          userId: user.id,
-          tokenHash: tokenHash(refresh),
-          expiresAt: new Date(Date.now() + 7 * 86400000),
-        });
+      await tx.insert(refreshTokens).values({
+        userId: user.id,
+        tokenHash: tokenHash(refresh),
+        expiresAt: new Date(Date.now() + 7 * 86400000),
+      });
       return { user: safeUser(user), access: this.jwt.sign({ sub: user.id }), refresh };
     });
   }

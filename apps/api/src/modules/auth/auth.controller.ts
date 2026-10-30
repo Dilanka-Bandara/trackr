@@ -4,6 +4,7 @@ import {
   Get,
   Inject,
   Post,
+  Patch,
   Req,
   Res,
   UnauthorizedException,
@@ -12,7 +13,14 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { randomBytes } from 'node:crypto';
 import { Request, Response } from 'express';
-import { z, loginSchema, registerSchema, User } from '@trackr/shared';
+import {
+  z,
+  loginSchema,
+  registerSchema,
+  profileSchema,
+  changePasswordSchema,
+  User,
+} from '@trackr/shared';
 import { CurrentUser, Endpoint, Public, ZodPipe } from '../../common/http';
 import { env } from '../../config';
 import { AuthService } from './auth.service';
@@ -68,6 +76,24 @@ export class AuthController {
   }
   @Get('me') @Endpoint('Get signed-in user') me(@CurrentUser() user: User) {
     return user;
+  }
+  @Patch('profile') @Endpoint('Update your profile', profileSchema) updateProfile(
+    @CurrentUser() user: User,
+    @Body(new ZodPipe(profileSchema)) input: z.infer<typeof profileSchema>,
+  ) {
+    return this.auth.updateProfile(user.id, input.name);
+  }
+  @Post('password')
+  @Endpoint('Change password and revoke refresh sessions', changePasswordSchema)
+  async changePassword(
+    @CurrentUser() user: User,
+    @Body(new ZodPipe(changePasswordSchema)) input: z.infer<typeof changePasswordSchema>,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.changePassword(user.id, input);
+    res.clearCookie('access_token', cookies);
+    res.clearCookie('refresh_token', cookies);
+    return result;
   }
   @Public() @Get('google') @Endpoint('Start Google OAuth') google(@Res() res: Response) {
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET)

@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import { ArrowRight, FileText, LayoutGrid, Sparkles } from 'lucide-react';
 import { PageHeader } from '@/components/app-shell';
+import { AccountSettings } from '@/components/account-settings';
 export default function Settings() {
   return (
     <>
       <PageHeader
-        eyebrow="A LITTLE GUIDANCE GOES A LONG WAY"
-        title="Make yourself at home"
-        description="Everything you need to get your search moving."
+        eyebrow="YOUR WORKSPACE, YOUR WAY"
+        title="Account settings"
+        description="Manage your profile and keep your account secure."
       />
+      <AccountSettings />
       <div className="help-grid">
         {[
           {
